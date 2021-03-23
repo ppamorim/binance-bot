@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 toml = "0.5.8"
-binance = { git = "https://github.com/wisespace-io/binance-rs.git" }
+binance = { git = "https://github.com/ppamorim/binance-rs.git" }
 serde = "1.0"
