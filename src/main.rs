@@ -12,8 +12,31 @@ use atomic_float::AtomicF64;
 use core::sync::atomic::Ordering::Relaxed;
 
 use dialoguer::{theme::ColorfulTheme, Input, Confirm};
+use chrono::prelude::*;
 
 fn main() {
+
+    let ascii_name = r#"
+888888b.   d8b                                                  888888b.            888    
+888  "88b  Y8P                                                  888  "88b           888    
+888  .88P                                                       888  .88P           888    
+8888888K.  888 88888b.   8888b.  88888b.   .d8888b .d88b.       8888888K.   .d88b.  888888 
+888  "Y88b 888 888 "88b     "88b 888 "88b d88P"   d8P  Y8b      888  "Y88b d88""88b 888    
+888    888 888 888  888 .d888888 888  888 888     88888888      888    888 888  888 888    
+888   d88P 888 888  888 888  888 888  888 Y88b.   Y8b.          888   d88P Y88..88P Y88b.  
+8888888P"  888 888  888 "Y888888 888  888  "Y8888P "Y8888       8888888P"   "Y88P"   "Y888
+"#;
+
+    eprintln!("{}", ascii_name);
+
+    let local: DateTime<Local> = Local::now();
+    let greetings_hour: String = match local.hour() {
+        0..=11 => String::from("morning"),
+        12..=17 => String::from("afternoon"),
+        _ => String::from("night"),
+    };
+
+    eprintln!("Good {}. Welcome to the Binance bot!\n", greetings_hour);
 
     let symbol: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("What is the symbol (i.e. BTCUSDT)?")
@@ -91,15 +114,11 @@ fn price_monitor(account: Account, symbol: &str, margin: f32) {
                                 let highest_recommended_price_stop: f64 = HIGHEST_PRICE.load(Ordering::Relaxed);
                                 let max_recommended_price_stop: f64 = highest_recommended_price_stop.max(recommended_price_stop);
                                 HIGHEST_PRICE.store(max_recommended_price_stop, Ordering::Relaxed);
-        
-                                println!("Close: {}, Recommended price: {}", symbol_close, max_recommended_price_stop);
 
-                                let diff: f64 = f64::from(symbol_close) - max_recommended_price_stop;
-                                println!("diff {}, {}", diff, margin_price);
+                                let diff: f64 = f64::from(symbol_close) - order.price;
+
                                 if diff > margin_price {
                                     update_stop_loss(&account, order, max_recommended_price_stop);
-                                } else {
-                                    println!("Keep stop loss");
                                 }
                             },
                             None => {
