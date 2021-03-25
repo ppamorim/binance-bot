@@ -11,23 +11,48 @@ use binance::websockets::*;
 use atomic_float::AtomicF64;
 use core::sync::atomic::Ordering::Relaxed;
 
+use dialoguer::{theme::ColorfulTheme, Input, Confirm};
+
 fn main() {
 
-    let account: Account = load_account();
+    let symbol: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("What is the symbol (i.e. BTCUSDT)?")
+        .interact_text()
+        .unwrap();
 
-    let symbol = "DENTUSDT";
-    let margin: f32 = 0.01;
+    if !Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Do you confirm the symbol {}?", symbol))
+        .interact()
+        .unwrap() {
+        panic!("Operation cancelled. Reason: Symbol not confirmed.");
+    }
+
+    let margin_string: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("What is the margin for the symbol {}?", symbol))
+        .interact_text()
+        .unwrap();
+
+    if !Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Do you confirm the margin of {}% to the symbol {}?", margin_string, symbol))
+        .interact()
+        .unwrap() {
+        panic!("Operation cancelled. Reason: Margin not confirmed.");
+    }
+
+    let margin: f32 = (margin_string.parse::<f32>().unwrap())/100.0;
+
+    let account: Account = load_account();
 
     let symbol_c = symbol.clone();
     let margin_c = margin.clone();
     let acc_c = account.clone();
 
     let price_monitor_thread = std::thread::spawn(move || {
-        price_monitor(account, symbol, margin);
+        price_monitor(account, &symbol, margin);
     });
 
     let user_monitor_thread = std::thread::spawn(move || {
-        user_monitor(acc_c, symbol_c, margin_c);
+        user_monitor(acc_c, &symbol_c, margin_c);
     });
 
     let _ = price_monitor_thread.join();
@@ -69,7 +94,7 @@ fn price_monitor(account: Account, symbol: &str, margin: f32) {
         
                                 println!("Close: {}, Recommended price: {}", symbol_close, max_recommended_price_stop);
 
-                                let diff: f64 = f64::from(symbol_close) - order.price;
+                                let diff: f64 = f64::from(symbol_close) - max_recommended_price_stop;
                                 println!("diff {}, {}", diff, margin_price);
                                 if diff > margin_price {
                                     update_stop_loss(&account, order, max_recommended_price_stop);
@@ -78,13 +103,13 @@ fn price_monitor(account: Account, symbol: &str, margin: f32) {
                                 }
                             },
                             None => {
-                                let require_notify = order_found.load(Ordering::Relaxed);
-                                order_found.store(false, Ordering::Relaxed);
-                                if require_notify {
-                                    println!("____________________________________________________________\n");
-                                    println!("Order not found");
-                                    println!("____________________________________________________________");
-                                }
+                                // // let require_notify = order_found.load(Ordering::Relaxed);
+                                // // order_found.store(false, Ordering::Relaxed);
+                                // // if require_notify {
+                                //     println!("____________________________________________________________\n");
+                                //     println!("Order not found");
+                                //     println!("____________________________________________________________");
+                                // // }
                             },
                         };
 
@@ -129,6 +154,9 @@ fn user_monitor(account: Account, symbol: &str, margin: f32) {
             },
             WebsocketEvent::OrderTrade(trade) => {
                 println!("Symbol: {}, Side: {}, Price: {}, Execution Type: {}", trade.symbol, trade.side, trade.price, trade.execution_type);
+                // match trade.execution_type {
+
+                // }
             },
             _ => (),
             };
@@ -221,19 +249,27 @@ fn create_stop_loss_order(account: &Account, latest_order: Order, recommended_pr
 
     let orig_qty: f64 = latest_order.orig_qty.parse::<f64>().unwrap();
 
+    let t_recommended_price_limit = truncate(recommended_price_limit);
+    let t_recommended_price_stop = truncate(recommended_price_stop);
+
     println!("____________________________________________________________\n");
-    println!("Updating Symbol {}\nAmount: {}\nRecommended price stop: {}\nRecommended price limit: {}", latest_order.symbol, orig_qty, recommended_price_stop, recommended_price_limit);
+    println!("Updating Symbol {}\nAmount: {}\nRecommended price stop: {}\nRecommended price limit: {}",
+     latest_order.symbol, orig_qty, t_recommended_price_stop, t_recommended_price_limit);
     println!("____________________________________________________________");
 
     let result = account.stop_limit_sell_order(
         latest_order.symbol, 
         orig_qty, 
-        recommended_price_limit,
-        recommended_price_stop, 
+        t_recommended_price_limit,
+        t_recommended_price_stop, 
         binance::account::TimeInForce::GTC);
 
     match result {
         Ok(answer) => println!("{:?}", answer),
         Err(e) => println!("Error: {:?}", e),
     }
+}
+
+fn truncate(value: f64) -> f64 {
+    f64::trunc(value*10000000.0)/10000000.0
 }
