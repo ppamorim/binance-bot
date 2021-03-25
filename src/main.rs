@@ -11,10 +11,13 @@ use binance::websockets::*;
 use atomic_float::AtomicF64;
 use core::sync::atomic::Ordering::Relaxed;
 
+use console::Term;
 use dialoguer::{theme::ColorfulTheme, Input, Confirm};
 use chrono::prelude::*;
 
 fn main() {
+
+    let term = Term::stdout();
 
     let ascii_name = r#"
 888888b.   d8b                                                  888888b.            888    
@@ -27,7 +30,7 @@ fn main() {
 8888888P"  888 888  888 "Y888888 888  888  "Y8888P "Y8888       8888888P"   "Y88P"   "Y888
 "#;
 
-    eprintln!("{}", ascii_name);
+    term.write_line(ascii_name).unwrap();
 
     let local: DateTime<Local> = Local::now();
     let greetings_hour: String = match local.hour() {
@@ -36,7 +39,8 @@ fn main() {
         _ => String::from("night"),
     };
 
-    eprintln!("Good {}. Welcome to the Binance bot!\n", greetings_hour);
+    let greetings = format!("Good {}. Welcome to the Binance bot!\n", greetings_hour);
+    term.write_line(&greetings).unwrap();
 
     let symbol: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("What is the symbol (i.e. BTCUSDT)?")
@@ -88,55 +92,94 @@ fn price_monitor(account: Account, symbol: &str, margin: f32) {
     let order_found = AtomicBool::new(false);
 
     static HIGHEST_PRICE: AtomicF64 = AtomicF64::new(0.0);
+    
+    // let agg_trade: String = format!("!ticker@arr"); // All Symbols
+    let agg_trade: String = format!("{}@ticker", symbol.to_lowercase()); // All Symbols
 
     let keep_running = AtomicBool::new(true); // Used to control the event loop
-    let agg_trade: String = format!("!ticker@arr"); // All Symbols
     let mut web_socket: WebSockets = WebSockets::new(|event: WebsocketEvent| {
         match event {
-            // 24hr rolling window ticker statistics for all symbols that changed in an array.
-            WebsocketEvent::DayTickerAll(ticker_events) => {
-                for tick_event in ticker_events {
-                    if tick_event.symbol == symbol {
 
-                        // let symbol_average: f32 = tick_event.average_price.parse().unwrap();
-                        let symbol_close: f32 = tick_event.current_close.parse().unwrap();
+            WebsocketEvent::DayTicker(ticker_event) => {
+                // let symbol_average: f32 = tick_event.average_price.parse().unwrap();
+                let symbol_close: f32 = ticker_event.current_close.parse().unwrap();
 
-                        println!("Latest close price: {}", symbol_close);
-                        
-                        match get_open_order(&account, symbol) {
-                            Some(order) => {
+                println!("Latest close price: {}", symbol_close);
+                
+                match get_open_order(&account, symbol) {
+                    Some(order) => {
 
-                                order_found.store(true, Ordering::Relaxed);
-        
-                                let margin_price: f64 = f64::from(symbol_close * margin);
-                                let recommended_price_stop: f64 = f64::from(symbol_close) - margin_price;
+                        order_found.store(true, Ordering::Relaxed);
 
-                                let highest_recommended_price_stop: f64 = HIGHEST_PRICE.load(Ordering::Relaxed);
-                                let max_recommended_price_stop: f64 = highest_recommended_price_stop.max(recommended_price_stop);
-                                HIGHEST_PRICE.store(max_recommended_price_stop, Ordering::Relaxed);
+                        let margin_price: f64 = f64::from(symbol_close * margin);
+                        let recommended_price_stop: f64 = f64::from(symbol_close) - margin_price;
 
-                                let diff: f64 = f64::from(symbol_close) - order.price;
+                        let highest_recommended_price_stop: f64 = HIGHEST_PRICE.load(Ordering::Relaxed);
+                        let max_recommended_price_stop: f64 = highest_recommended_price_stop.max(recommended_price_stop);
+                        HIGHEST_PRICE.store(max_recommended_price_stop, Ordering::Relaxed);
 
-                                if diff > margin_price {
-                                    update_stop_loss(&account, order, max_recommended_price_stop);
-                                }
-                            },
-                            None => {
-                                // // let require_notify = order_found.load(Ordering::Relaxed);
-                                // // order_found.store(false, Ordering::Relaxed);
-                                // // if require_notify {
-                                //     println!("____________________________________________________________\n");
-                                //     println!("Order not found");
-                                //     println!("____________________________________________________________");
-                                // // }
-                            },
-                        };
+                        let diff: f64 = f64::from(symbol_close) - order.price;
 
-                        
-
-                    }
-                }
+                        if diff > margin_price {
+                            update_stop_loss(&account, order, max_recommended_price_stop);
+                        }
+                    },
+                    None => {
+                        // // let require_notify = order_found.load(Ordering::Relaxed);
+                        // // order_found.store(false, Ordering::Relaxed);
+                        // // if require_notify {
+                        //     println!("____________________________________________________________\n");
+                        //     println!("Order not found");
+                        //     println!("____________________________________________________________");
+                        // // }
+                    },
+                };
             },
+
+            // 24hr rolling window ticker statistics for all symbols that changed in an array.
+            // WebsocketEvent::DayTickerAll(ticker_events) => {
+            //     for tick_event in ticker_events {
+            //         if tick_event.symbol == symbol {
+
+            //             // let symbol_average: f32 = tick_event.average_price.parse().unwrap();
+            //             let symbol_close: f32 = tick_event.current_close.parse().unwrap();
+
+            //             println!("Latest close price: {}", symbol_close);
+                        
+            //             match get_open_order(&account, symbol) {
+            //                 Some(order) => {
+
+            //                     order_found.store(true, Ordering::Relaxed);
+        
+            //                     let margin_price: f64 = f64::from(symbol_close * margin);
+            //                     let recommended_price_stop: f64 = f64::from(symbol_close) - margin_price;
+
+            //                     let highest_recommended_price_stop: f64 = HIGHEST_PRICE.load(Ordering::Relaxed);
+            //                     let max_recommended_price_stop: f64 = highest_recommended_price_stop.max(recommended_price_stop);
+            //                     HIGHEST_PRICE.store(max_recommended_price_stop, Ordering::Relaxed);
+
+            //                     let diff: f64 = f64::from(symbol_close) - order.price;
+
+            //                     if diff > margin_price {
+            //                         update_stop_loss(&account, order, max_recommended_price_stop);
+            //                     }
+            //                 },
+            //                 None => {
+            //                     // // let require_notify = order_found.load(Ordering::Relaxed);
+            //                     // // order_found.store(false, Ordering::Relaxed);
+            //                     // // if require_notify {
+            //                     //     println!("____________________________________________________________\n");
+            //                     //     println!("Order not found");
+            //                     //     println!("____________________________________________________________");
+            //                     // // }
+            //                 },
+            //             };
+
+                        
+
+            //         }
+            //     }
+            // },
             _ => (),
         };
         Ok(())
