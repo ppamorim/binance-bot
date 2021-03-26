@@ -32,15 +32,7 @@ fn main() {
 
     term.write_line(ascii_name).unwrap();
 
-    let local: DateTime<Local> = Local::now();
-    let greetings_hour: String = match local.hour() {
-        0..=11 => String::from("morning"),
-        12..=17 => String::from("afternoon"),
-        _ => String::from("night"),
-    };
-
-    let greetings = format!("Good {}. Welcome to the Binance bot!\n", greetings_hour);
-    term.write_line(&greetings).unwrap();
+    greet(&term);
 
     let symbol: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("What is the symbol (i.e. BTCUSDT)?")
@@ -85,6 +77,18 @@ fn main() {
     let _ = price_monitor_thread.join();
     let _ = user_monitor_thread.join();
 
+}
+
+fn greet(term: &Term) {
+    let local: DateTime<Local> = Local::now();
+    let greetings_hour: String = match local.hour() {
+        0..=11 => String::from("morning"),
+        12..=17 => String::from("afternoon"),
+        _ => String::from("night"),
+    };
+
+    let greetings = format!("Good {}. Welcome to the Binance bot!\n", greetings_hour);
+    term.write_line(&greetings).unwrap();
 }
 
 fn price_monitor(account: Account, symbol: &str, margin: f32) {
